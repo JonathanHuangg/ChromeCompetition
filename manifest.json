@@ -1,0 +1,11 @@
+{
+    "manifest_version": 3,
+    "permissions": ["tabs", "windows", "storage"],
+    "name": "Tab Screentime",
+    "description": "Tracks the usage history of chrome tabs",
+    "version": "1.0",
+    "action": {
+      "default_popup": "pi-chart.html",
+      "default_icon": "mainIcon.png"
+    }
+  }
