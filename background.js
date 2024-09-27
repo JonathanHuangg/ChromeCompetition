@@ -27,6 +27,7 @@ chrome.tabs.onActivated.addListener(function(activeInfo) {
 
         });
         activeTabId = activeInfo.tabId;
+        logStorageContents();
     });
 });
 

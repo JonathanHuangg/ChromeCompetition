@@ -7,5 +7,11 @@
     "action": {
       "default_popup": "pi-chart.html",
       "default_icon": "mainIcon.png"
-    }
+    }, 
+    "web_accessible_resources": [
+        {
+            "resources": ["localhostTab.html"],
+            "matches": ["<all_urls>"]
+        }
+    ]
   }
