@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "permissions": ["tabs", "windows", "storage"],
-    "name": "Tab Screentime",
+    "name": "Chrome Screentime",
     "description": "Tracks the usage history of chrome tabs",
     "version": "1.0",
     "action": {

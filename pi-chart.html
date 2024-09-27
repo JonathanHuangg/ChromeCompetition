@@ -1,5 +1,16 @@
+<!DOCTYPE html>
 <html>
+  <head>
+    <title>PI Chart</title>
+  </head>
   <body>
-    <h1> This should be the pi chart </h1>
+    <h1>This is the PI Chart popup</h1>
+    <button id="openLocalhostTab">Open Localhost Tab</button>
+
+    <script>
+      document.getElementById("openLocalhostTab").addEventListener("click", function() {
+        chrome.tabs.create({ url: "http://localhost:3000" });
+      });
+    </script>
   </body>
 </html>
