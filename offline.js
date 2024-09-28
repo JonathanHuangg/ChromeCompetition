@@ -9,13 +9,12 @@ function logStorageContents() {
             return;
         }
 
-        // Clear previous contents
         storageDiv.innerHTML = "<h3>Storage Contents:</h3>";
 
         if (Object.keys(items).length === 0) {
             storageDiv.innerHTML += "<p>Storage is empty.</p>";
         } else {
-            const ul = document.createElement('ul');  // Create a list to organize the output
+            const ul = document.createElement('ul');  
 
             for (const key in items) {
                 if (items.hasOwnProperty(key)) {
