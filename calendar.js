@@ -51,7 +51,7 @@ function generateDayCalendar(calendarEl, calendarEvents) {
         editable: false,
         droppable: false,
         eventClick: function(info) {
-            showModal(info.event);
+            showDetails(info.event);
         },
         dayMaxEvents: true,
         views: {
@@ -65,32 +65,14 @@ function generateDayCalendar(calendarEl, calendarEvents) {
 }
 
 
-function showModal(event) {
-    var modalHtml = `
-        <div class="modal fade" id="eventModal" tabindex="-1" aria-labelledby="eventModalLabel" aria-hidden="true">
-          <div class="modal-dialog">
-            <div class="modal-content">
-              <div class="modal-header">
-                <h5 class="modal-title" id="eventModalLabel">${event.title}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-              </div>
-              <div class="modal-body">
-                <p><strong>Start:</strong> ${event.start.toLocaleString()}</p>
-                <p><strong>End:</strong> ${event.end ? event.end.toLocaleString() : 'N/A'}</p>
-              </div>
-              <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-              </div>
-            </div>
-          </div>
-        </div>
-    `;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    var eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
-    eventModal.show();
-    document.getElementById('eventModal').addEventListener('hidden.bs.modal', function () {
-        document.getElementById('eventModal').remove();
-    });
+function showDetails(event) {
+    var extraContainer = document.getElementById('extra-container');
+
+    document.getElementById('event-title').textContent = "Title: " + event.title;
+    document.getElementById('event-start').textContent = "Start: " + event.start.toLocaleString();
+    document.getElementById('event-end').textContent = "End: " + (event.end ? event.end.toLocaleString() : 'N/A');
+
+    extraContainer.style.display = 'block';
 }
 
 function processStorage(callback) {
@@ -138,7 +120,6 @@ function processStorage(callback) {
 
 function generateTimeBlocks(events, date) {
     const timeBlocks = [];
-
     const startOfDay = new Date(date);  
     startOfDay.setHours(0, 0, 0, 0);
 
@@ -152,13 +133,22 @@ function generateTimeBlocks(events, date) {
             return eventEnd > blockStart && eventStart < blockEnd;
         });
 
-        let blockTitle;
-        if (overlappingEvents.length === 0) {
-            blockTitle = '';
-        } else if (overlappingEvents.length === 1) {
+        let blockTitle = '';
+
+        if (overlappingEvents.length === 1) {
             blockTitle = overlappingEvents[0].title;
-        } else {
-            blockTitle = overlappingEvents.map(ev => ev.title).join(', ');
+        } else if (overlappingEvents.length > 1) {
+            const titleCounts = {};
+
+            overlappingEvents.forEach(event => {
+                titleCounts[event.title] = (titleCounts[event.title] || 0) + 1;
+            });
+
+            const mostCommonTitle = Object.keys(titleCounts).reduce((a, b) => {
+                return titleCounts[a] > titleCounts[b] ? a : b;
+            });
+
+            blockTitle = mostCommonTitle;
         }
 
         timeBlocks.push({
@@ -168,5 +158,6 @@ function generateTimeBlocks(events, date) {
             allDay: false
         });
     }
+
     return timeBlocks;
 }
