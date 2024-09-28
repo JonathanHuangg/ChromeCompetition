@@ -9,81 +9,159 @@ chrome.tabs.onActivated.addListener(function (activeInfo) {
         const domain = getDomainFromUrl(tab.url);
         const url = tab.url;  
 
-        if (activeDomain) {
-            lostFocus(activeDomain, activeUrl);  
-        }
-
-        const focusEvent = {
-            focusStart: currTime,
-            focusEnd: null,
-            url: url  
-        };
-
-        chrome.storage.local.get(["tabFocusEvents"], function (result) {
-            const tabFocusEvents = result.tabFocusEvents || {};
-
-            if (!tabFocusEvents[domain]) {
-                tabFocusEvents[domain] = {
-                    domain: domain,
-                    events: []
-                };
+        if (domain != "extensions" && domain != null && domain != "mlgpaokmkbpbhmdebjfajahjfbefbkog") {
+            if (activeDomain) {
+                lostFocus(activeDomain, activeUrl).then(function() {
+                    // Proceed after lostFocus has completed
+                    createFocusEvent(domain, url, currTime, function() {
+                        activeTabId = activeInfo.tabId;
+                        activeDomain = domain;
+                        activeUrl = url;
+                    });
+                });
+            } else {
+                // No previous activeDomain, proceed to create focusEvent
+                createFocusEvent(domain, url, currTime, function() {
+                    activeTabId = activeInfo.tabId;
+                    activeDomain = domain;
+                    activeUrl = url;
+                });
             }
-
-            tabFocusEvents[domain].events.push(focusEvent);
-
-            chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
-                console.log("Tab gained focus for domain: ", domain, focusEvent);
-            });
-        });
-
-        activeTabId = activeInfo.tabId;
-        activeDomain = domain;
-        activeUrl = url;
+        } else {
+            // Domain is to be ignored
+            if (activeDomain) {
+                lostFocus(activeDomain, activeUrl).then(function() {
+                    activeTabId = null;
+                    activeDomain = null;
+                    activeUrl = null;
+                });
+            } else {
+                activeTabId = null;
+                activeDomain = null;
+                activeUrl = null;
+            }
+        }
     });
 
-    logStorageContents();
 });
 
 chrome.windows.onFocusChanged.addListener(function (windowId) {
     if (windowId === chrome.windows.WINDOW_ID_NONE && activeDomain) {
-        lostFocus(activeDomain, activeUrl);
-        activeDomain = null;
-        activeTabId = null;
-        activeUrl = null;
+        lostFocus(activeDomain, activeUrl).then(function() {
+            activeDomain = null;
+            activeTabId = null;
+            activeUrl = null;
+        });
+    } else if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+        // Window has gained focus, we may need to restore activeDomain and activeUrl
+        chrome.windows.get(windowId, {populate: true}, function(window) {
+            if (window.focused) {
+                const activeTab = window.tabs.find(tab => tab.active);
+                if (activeTab) {
+                    const domain = getDomainFromUrl(activeTab.url);
+                    const url = activeTab.url;
+                    const currTime = new Date().toISOString();
+
+                    if (domain != "extensions" && domain != null && domain != "mlgpaokmkbpbhmdebjfajahjfbefbkog") {
+                        createFocusEvent(domain, url, currTime, function() {
+                            activeTabId = activeTab.id;
+                            activeDomain = domain;
+                            activeUrl = url;
+                        });
+                    } else {
+                        activeTabId = null;
+                        activeDomain = null;
+                        activeUrl = null;
+                    }
+                }
+            }
+        });
     }
 });
 
 chrome.tabs.onRemoved.addListener(function (tabId) {
     if (tabId === activeTabId && activeDomain) {
-        lostFocus(activeDomain, activeUrl);
-        activeDomain = null;
-        activeTabId = null;
-        activeUrl = null;
+        lostFocus(activeDomain, activeUrl).then(function() {
+            activeDomain = null;
+            activeTabId = null;
+            activeUrl = null;
+        });
+    }
+});
+
+chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
+    if (tabId === activeTabId && changeInfo.url) {
+        const currTime = new Date().toISOString();
+
+        lostFocus(activeDomain, activeUrl).then(function() {
+            const domain = getDomainFromUrl(changeInfo.url);
+            const url = changeInfo.url;
+
+            if (domain != "extensions" && domain != null && domain != "mlgpaokmkbpbhmdebjfajahjfbefbkog") {
+                createFocusEvent(domain, url, currTime, function() {
+                    activeDomain = domain;
+                    activeUrl = url;
+                });
+            } else {
+                activeDomain = null;
+                activeUrl = null;
+            }
+        });
     }
 });
 
 function lostFocus(domain, url) {
-    const currentTime = new Date().toISOString();
+    return new Promise(function(resolve, reject) {
+        const currentTime = new Date().toISOString();
+
+        chrome.storage.local.get(["tabFocusEvents"], function (result) {
+            const tabFocusEvents = result.tabFocusEvents || {};
+
+            if (tabFocusEvents[domain] && tabFocusEvents[domain].events.length > 0) {
+                const events = tabFocusEvents[domain].events;
+
+                const lastEvent = events[events.length - 1];
+                if (lastEvent && !lastEvent.focusEnd) {
+                    lastEvent.focusEnd = currentTime;
+
+                    chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
+                        console.log("Tab lost focus for domain:", domain, lastEvent);
+                        resolve();
+                    });
+                } else {
+                    resolve();
+                }
+            } else {
+                resolve();
+            }
+        });
+    });
+}
+
+function createFocusEvent(domain, url, currTime, callback) {
+    const focusEvent = {
+        focusStart: currTime,
+        focusEnd: null,
+        url: url  
+    };
 
     chrome.storage.local.get(["tabFocusEvents"], function (result) {
         const tabFocusEvents = result.tabFocusEvents || {};
 
-        if (tabFocusEvents[domain] && tabFocusEvents[domain].events.length > 0) {
-            const events = tabFocusEvents[domain].events;
-
-            const lastEvent = events[events.length - 1];
-            if (lastEvent && !lastEvent.focusEnd) {
-                lastEvent.focusEnd = currentTime;
-
-                chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
-                    console.log("Tab lost focus for domain:", domain, lastEvent);
-                });
-            }
+        if (!tabFocusEvents[domain]) {
+            tabFocusEvents[domain] = {
+                domain: domain,
+                events: []
+            };
         }
-    });
 
-    activeTabId = null; 
-    activeUrl = null;
+        tabFocusEvents[domain].events.push(focusEvent);
+
+        chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
+            console.log("Tab gained focus for domain: ", domain, focusEvent);
+            if (callback) callback();
+        });
+    });
 }
 
 function getDomainFromUrl(url) {
