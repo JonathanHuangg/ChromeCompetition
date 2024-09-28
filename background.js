@@ -1,10 +1,16 @@
 let activeTabId = null;
+let activeDomain = null;
 
 chrome.tabs.onActivated.addListener(function (activeInfo) {
     const currTime = new Date().toISOString();
 
     chrome.tabs.get(activeInfo.tabId, function (tab) {
         const domain = getDomainFromUrl(tab.url);
+
+        if (activeDomain) {
+            lostFocus(activeDomain);
+        }
+
         const focusEvent = {
             focusStart: currTime,
             focusEnd: null
@@ -27,45 +33,47 @@ chrome.tabs.onActivated.addListener(function (activeInfo) {
             });
         });
 
-        activeTabId = activeInfo.tabId; // Keep track of the active tab
+        activeTabId = activeInfo.tabId; 
+        activeDomain = domain;
     });
 
     logStorageContents();
-
 });
 
 // window loses focus
 chrome.windows.onFocusChanged.addListener(function (windowId) {
-    if (windowId === chrome.windows.WINDOW_ID_NONE) {
-        tabLostFocus();
+    if (windowId === chrome.windows.WINDOW_ID_NONE && activeDomain) {
+        lostFocus(activeDomain);
+        activeDomain = null;
+        activeTabId = null;
     }
 });
 
-// Tab is loses focus
+// Tab loses focus
 chrome.tabs.onRemoved.addListener(function (tabId) {
     if (tabId === activeTabId) {
-        tabLostFocus();
+        lostFocus(activeDomain);
+        activeDomain = null;
+        activeTabId = null;
     }
 });
 
-function tabLostFocus() {
+function lostFocus(domain) {
     const currentTime = new Date().toISOString();
 
     chrome.storage.local.get(["tabFocusEvents"], function (result) {
         const tabFocusEvents = result.tabFocusEvents || {};
 
-        for (const domain in tabFocusEvents) {
+        if (tabFocusEvents[domain] && tabFocusEvents[domain].events.length > 0) {
             const events = tabFocusEvents[domain].events;
-            const lastEvent = events[events.length - 1];
 
+            const lastEvent = events[events.length - 1];
             if (lastEvent && !lastEvent.focusEnd) {
                 lastEvent.focusEnd = currentTime;
 
                 chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
-                    console.log("Tab lost focus for domain:", domain, lastEvent);
-                });
-
-                break; // Stop after updating the first found event
+                    console.log("Tab lost focus for domain: ", domain, lastEvent);
+                })
             }
         }
     });

@@ -2,11 +2,16 @@
 <html>
   <head>
     <title>PI Chart</title>
+    <script src="lib/chart.umd.js"></script>
   </head>
   <body>
-    <h1>This is the PI Chart popup</h1>
-    <button id="openLocalTab">Open Offline Tab</button>
+    <!-- For the pie chart -->
+    <h1>Today's Use</h1>
+    <canvas id="pieChart" width="400" height="400"></canvas>
+    <script src="pieChart.js"></script>
     
+    <!-- For the calendar-view -->
+    <button id="openLocalTab">Open Offline Tab</button>
     <script src="popup.js"></script>
   </body>
 </html>
