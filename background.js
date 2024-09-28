@@ -1,19 +1,22 @@
 let activeTabId = null;
 let activeDomain = null;
+let activeUrl = null; 
 
 chrome.tabs.onActivated.addListener(function (activeInfo) {
     const currTime = new Date().toISOString();
 
     chrome.tabs.get(activeInfo.tabId, function (tab) {
         const domain = getDomainFromUrl(tab.url);
+        const url = tab.url;  
 
         if (activeDomain) {
-            lostFocus(activeDomain);
+            lostFocus(activeDomain, activeUrl);  
         }
 
         const focusEvent = {
             focusStart: currTime,
-            focusEnd: null
+            focusEnd: null,
+            url: url  
         };
 
         chrome.storage.local.get(["tabFocusEvents"], function (result) {
@@ -33,32 +36,33 @@ chrome.tabs.onActivated.addListener(function (activeInfo) {
             });
         });
 
-        activeTabId = activeInfo.tabId; 
+        activeTabId = activeInfo.tabId;
         activeDomain = domain;
+        activeUrl = url;
     });
 
     logStorageContents();
 });
 
-// window loses focus
 chrome.windows.onFocusChanged.addListener(function (windowId) {
     if (windowId === chrome.windows.WINDOW_ID_NONE && activeDomain) {
-        lostFocus(activeDomain);
+        lostFocus(activeDomain, activeUrl);
         activeDomain = null;
         activeTabId = null;
+        activeUrl = null;
     }
 });
 
-// Tab loses focus
 chrome.tabs.onRemoved.addListener(function (tabId) {
-    if (tabId === activeTabId) {
-        lostFocus(activeDomain);
+    if (tabId === activeTabId && activeDomain) {
+        lostFocus(activeDomain, activeUrl);
         activeDomain = null;
         activeTabId = null;
+        activeUrl = null;
     }
 });
 
-function lostFocus(domain) {
+function lostFocus(domain, url) {
     const currentTime = new Date().toISOString();
 
     chrome.storage.local.get(["tabFocusEvents"], function (result) {
@@ -72,18 +76,19 @@ function lostFocus(domain) {
                 lastEvent.focusEnd = currentTime;
 
                 chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
-                    console.log("Tab lost focus for domain: ", domain, lastEvent);
-                })
+                    console.log("Tab lost focus for domain:", domain, lastEvent);
+                });
             }
         }
     });
 
-    activeTabId = null; // Reset activeTabId when focus is lost
+    activeTabId = null; 
+    activeUrl = null;
 }
 
 function getDomainFromUrl(url) {
     try {
-        const urlObj = new URL(url); 
+        const urlObj = new URL(url); // Use the URL constructor to parse
         return urlObj.hostname;
     } catch (error) {
         console.error("Invalid URL: ", error);
@@ -91,7 +96,6 @@ function getDomainFromUrl(url) {
     }
 }
 
-// Helper function to log all storage contents
 function logStorageContents() {
     chrome.storage.local.get(null, function (items) {
         console.log("===== Chrome Storage Contents =====");
