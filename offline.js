@@ -44,3 +44,4 @@ function logStorageContents() {
 window.onload = function() {
     logStorageContents();
 };
+

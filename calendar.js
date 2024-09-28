@@ -1,55 +1,71 @@
-document.addEventListener('DOMContentLoaded', function () {
+document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('calendar');
-    generateDayCalendar(calendarEl);
-});
 
-function generateDayCalendar(calendarEl) {
-    processStorage(function(events) {
-        console.log('Events to add to calendar:', events);
+    processStorage(function(timeBlocks) {
+        console.log('Time Blocks:', timeBlocks);
 
-        var calendar = new FullCalendar.Calendar(calendarEl, {
-            plugins: [ 'bootstrap5' ],
-            themeSystem: 'bootstrap5',
-            initialView: 'timeGridDay',
-            initialDate: new Date(),
-            headerToolbar: {
-                left: 'prev,next today',
-                center: 'title',
-                right: 'dayGridMonth,timeGridWeek,timeGridDay'
-            },
-            slotDuration: '01:00:00',
-            slotLabelFormat: {
-                hour: '2-digit',
-                minute: '2-digit',
-                omitZeroMinute: false,
-                hour12: false
-            },
-            events: events,
-            height: 'auto',
-            nowIndicator: true,
-            navLinks: true,
-            weekends: true,
-            editable: false,
-            droppable: false,
-            eventClick: function(info) {
-                // Use Bootstrap Modal for event details
-                showModal(info.event);
-            },
-            dayMaxEvents: true,
-            progressiveEventRendering: true,
-            views: {
-                timeGridDay: {
-                    nowIndicator: true
-                }
-            }
-        });
-
-        calendar.render();
+        generateDayCalendar(calendarEl, timeBlocks);
     });
+});  
+
+function generateDayCalendar(calendarEl, calendarEvents) {
+    // Check if calendarEvents is an array and log if not.
+    if (!Array.isArray(calendarEvents)) {
+        console.error("calendarEvents is not an array", calendarEvents);
+        return;
+    }
+
+    // Ensure all events have start and end times in correct format.
+    for (let i = 0; i < calendarEvents.length; i++) {
+        const event = calendarEvents[i];
+        if (!event.start || !event.end) {
+            console.error("Event missing start or end time", event);
+            return; // Do not proceed with invalid data.
+        }
+    }
+
+    // Initialize the calendar
+    var calendar = new FullCalendar.Calendar(calendarEl, {
+        themeSystem: 'bootstrap5',
+        initialView: 'timeGridDay',
+        initialDate: new Date(),
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,timeGridDay'
+        },
+        minTime: '00:00:00',
+        maxTime: '24:00:00',
+        slotDuration: '00:30:00',
+        slotLabelFormat: {
+            hour: '2-digit',
+            minute: '2-digit',
+            omitZeroMinute: false,
+            hour12: false
+        },
+        events: calendarEvents,
+        height: 'auto',
+        nowIndicator: true,
+        navLinks: true,
+        weekends: true,
+        editable: false,
+        droppable: false,
+        eventClick: function(info) {
+            showModal(info.event);
+        },
+        dayMaxEvents: true,
+        views: {
+            timeGridDay: {
+                nowIndicator: true
+            }
+        }
+    });
+
+    calendar.render();
 }
 
+
 function showModal(event) {
-    // Create a Bootstrap Modal dynamically
     var modalHtml = `
         <div class="modal fade" id="eventModal" tabindex="-1" aria-labelledby="eventModalLabel" aria-hidden="true">
           <div class="modal-dialog">
@@ -69,12 +85,9 @@ function showModal(event) {
           </div>
         </div>
     `;
-    // Append modal to body
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    // Show the modal
     var eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
     eventModal.show();
-    // Remove modal from DOM after it's closed
     document.getElementById('eventModal').addEventListener('hidden.bs.modal', function () {
         document.getElementById('eventModal').remove();
     });
@@ -84,12 +97,14 @@ function processStorage(callback) {
     chrome.storage.local.get("tabFocusEvents", function(result) {
         const tabFocusEvents = result.tabFocusEvents || {};
         const events = [];
-        const today = new Date().toISOString().split('T')[0];
+        const todaysDate = new Date();
+        const today = todaysDate.toISOString().split('T')[0];
 
         console.log('tabFocusEvents:', tabFocusEvents);
 
         for (const domain in tabFocusEvents) {
-            if (tabFocusEvents.hasOwnProperty(domain)) {
+            // Check if the domain has events and the events array is defined
+            if (tabFocusEvents.hasOwnProperty(domain) && Array.isArray(tabFocusEvents[domain].events)) {
                 tabFocusEvents[domain].events.forEach(event => {
                     console.log('Event focusStart:', event.focusStart);
                     if (event.focusStart && event.focusEnd) {
@@ -103,54 +118,55 @@ function processStorage(callback) {
                         }
                     }
                 });
+            } else {
+                console.warn(`No events found or not an array for domain: ${domain}`);
             }
         }
+
         console.log('Raw events:', events);
-        cleanProcessedStorage(callback, events);
+
+        // Check if events is actually an array and not empty before passing to callback
+        if (Array.isArray(events) && events.length > 0) {
+            const timeBlocks = generateTimeBlocks(events, todaysDate);
+            callback(timeBlocks);
+        } else {
+            console.warn("No valid events found for today.");
+            callback([]); // Pass an empty array to callback if no events are found
+        }
     });
 }
 
-function cleanProcessedStorage(callback, events) {
-    // Sort events by start time
-    events.sort((a, b) => new Date(a.start) - new Date(b.start));
+function generateTimeBlocks(events, date) {
+    const timeBlocks = [];
 
-    const cleanedEvents = [];
-    let currentEvent = null;
+    const startOfDay = new Date(date);  
+    startOfDay.setHours(0, 0, 0, 0);
 
-    const TEN_MINUTE = 10 * 60 * 1000; 
+    for (let i = 0; i < 48; i++) {
+        const blockStart = new Date(startOfDay.getTime() + i * 30 * 60 * 1000);
+        const blockEnd = new Date(blockStart.getTime() + 30 * 60 * 1000);
 
-    for (const event of events) {
-        const startTime = new Date(event.start);
-        const endTime = new Date(event.end);
-        
-        // check if first event
-        if (!currentEvent) {
-            currentEvent = { ...event };
+        let overlappingEvents = events.filter(event => {
+            const eventStart = new Date(event.start);
+            const eventEnd = new Date(event.end);
+            return eventEnd > blockStart && eventStart < blockEnd;
+        });
+
+        let blockTitle;
+        if (overlappingEvents.length === 0) {
+            blockTitle = '';
+        } else if (overlappingEvents.length === 1) {
+            blockTitle = overlappingEvents[0].title;
         } else {
-            const currentEnd = new Date(currentEvent.end);
-            const timeDifference = startTime - currentEnd; 
-            
-            // they
-            if (timeDifference <= TEN_MINUTE && timeDifference >= 0) {
-                if (currentEvent.title === event.title) {
-                    currentEvent.end = new Date(Math.max(currentEnd, endTime)).toISOString();                
-                } else {
-                    cleanedEvents.push({ ...currentEvent });
-                    currentEvent = { ...event };
-                }
-            } else if (startTime > currentEnd) {
-                // just push the event and move on
-                cleanedEvents.push({ ...currentEvent });
-                currentEvent = { ...event };
-            }
+            blockTitle = overlappingEvents.map(ev => ev.title).join(', ');
         }
-    }
 
-    if (currentEvent) {
-        cleanedEvents.push(currentEvent);
+        timeBlocks.push({
+            title: blockTitle, 
+            start: blockStart.toISOString(),
+            end: blockEnd.toISOString(),
+            allDay: false
+        });
     }
-
-    console.log('Cleaned events:', cleanedEvents);
-    callback(cleanedEvents);
+    return timeBlocks;
 }
-
