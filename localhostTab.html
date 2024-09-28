@@ -1,7 +1,12 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <script src="index.global.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="lib/index.global.min.js"></script>
+    <script src="lib/bootstrap.bundle.min.js"></script>
+    <link src="lib/bootstrap.min.css"></link>
+    
     <style>
       body {
           font-family: Arial, sans-serif;
@@ -24,14 +29,36 @@
           border-left: 4px solid #ccc;
           font-size: 14px;
       }
+      #calendar {
+          max-width: 900px;
+          margin: 0 auto;
+          background-color: #fff;
+          padding: 20px;
+          box-shadow: 0 0 10px rgba(0,0,0,0.1);
+          border-radius: 8px;
+      }
+      .fc-toolbar.fc-header-toolbar {
+          margin-bottom: 20px;
+      }
+      .fc .fc-daygrid-event {
+          background-color: #0d6efd;
+          color: #fff;
+          border: none;
+          border-radius: 4px;
+      }
+      .fc .fc-timegrid-event {
+          background-color: #0d6efd;
+          color: #fff;
+          border: none;
+          border-radius: 4px;
+      }
     </style>
-    <title>Recorded Websites</title>
+    <title>Recorded Websites - Day View</title>
   </head>
   <body>
-    <h2>This is the Offline Tab</h2>
     <p>You can load this content without needing a localhost or internet connection.</p>
     <div id="calendar"> </div>
-
+    <script src="calendar.js"> </script>
     <!-- DELETE LATER Placeholder for dynamic storage content -->
     <div id="storageContents"></div>
 

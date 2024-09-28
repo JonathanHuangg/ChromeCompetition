@@ -1,10 +1,10 @@
 document.addEventListener('DOMContentLoaded', function () {
     processStorage(function(domainTimeMap) {
-        generatePieChart(domainTimeMap); // Pass the processed data to generatePieChart
+        generatePieChartByUrl(domainTimeMap); // Pass the processed data to generatePieChart
     });
 });
 
-function generatePieChart(domainTimeMap) {
+function generatePieChartByUrl(domainTimeMap) {
     var ctx = document.getElementById('pieChart').getContext('2d');
     const labels = Object.keys(domainTimeMap);
     const data = Object.values(domainTimeMap);

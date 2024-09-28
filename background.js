@@ -110,7 +110,7 @@ chrome.tabs.onUpdated.addListener(function(tabId, changeInfo, tab) {
     }
 });
 
-function lostFocus(domain, url) {
+function lostFocus(domain) {
     return new Promise(function(resolve, reject) {
         const currentTime = new Date().toISOString();
 
@@ -124,10 +124,19 @@ function lostFocus(domain, url) {
                 if (lastEvent && !lastEvent.focusEnd) {
                     lastEvent.focusEnd = currentTime;
 
-                    chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
-                        console.log("Tab lost focus for domain:", domain, lastEvent);
-                        resolve();
-                    });
+                    const focusStart = new Date(lastEvent.focusStart);
+                    const focusEnd = new Date(lastEvent.focusEnd);
+                    const durationSeconds = (focusEnd - focusStart) / 1000;
+                    // change this if needed
+                    if (durationSeconds >= 60) {
+                        chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {
+                            console.log("Tab lost focus for domain:", domain, lastEvent, "Duration (seconds):", durationSeconds);
+                            resolve();
+                        });
+                    } else {
+                        console.log("Event discarded. Duration (seconds):", durationSeconds);
+                        resolve();  
+                    }
                 } else {
                     resolve();
                 }

@@ -13,7 +13,7 @@
     }, 
     "web_accessible_resources": [
         {
-            "resources": ["localhostTab.html", "lib/chart.umd.js"],
+            "resources": ["localhostTab.html", "lib/chart.umd.js", "lib/index.global.min.js"],
             "matches": ["<all_urls>"]
         }
     ]
