@@ -131,7 +131,18 @@ window.selectedDate = selectedDate;
     
             // Create events for the detailed calendar
             var detailedEvents = getDetailedEventsForTimeBlock(event.start, event.end);
-    
+            
+            // get the correct time for the calendar
+            function getTimeSinceMidnight(date) {
+                function pad(num) {
+                    return num.toString().padStart(2, '0');
+                }
+                return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());            
+            }
+
+            var slotMinTime = getTimeSinceMidnight(event.start);
+            var slotMaxTime = getTimeSinceMidnight(event.end);
+
             // Initialize a new calendar for the detailed view
             detailCalendarInstance = new FullCalendar.Calendar(detailCalendarEl, {
                 initialView: 'timeGrid',
@@ -150,7 +161,10 @@ window.selectedDate = selectedDate;
                 editable: false,
                 allDaySlot: false,
                 eventOverlap: false,
-                slotEventOverlap: false
+                slotEventOverlap: false,
+                slotMinTime: slotMinTime,
+                slotMaxTime: slotMaxTime,
+                scrollTime: slotMinTime
             });
             detailCalendarInstance.render();
     
@@ -161,9 +175,10 @@ window.selectedDate = selectedDate;
         const detailedEvents = window.rawEvents || [];
         console.log('startTime:', startTime, 'endTime:', endTime);
 
+        // filter events that overlap with time block
         const overlappingEvents = detailedEvents.filter(event => {
-            const eventStart = event.start; // Already a Date object
-            const eventEnd = event.end;     // Already a Date object
+            const eventStart = event.start; 
+            const eventEnd = event.end;
             console.log('eventStart:', eventStart, 'eventEnd:', eventEnd);
             return eventEnd > startTime && eventStart < endTime;
         });
@@ -171,18 +186,11 @@ window.selectedDate = selectedDate;
         console.log('overlappingEvents:', overlappingEvents);
 
         // Calculate new durations to prevent overlap
-        const numberOfEvents = overlappingEvents.length;
-        const blockDuration = (endTime - startTime) / numberOfEvents;
-        
-        console.log('startTime:', startTime.toISOString(), 'endTime:', endTime.toISOString());
-        detailedEvents.forEach(event => {
-            console.log('Event:', event.title, 'Start:', event.start.toISOString(), 'End:', event.end.toISOString());
-        });
-
-        return overlappingEvents.map((event, index) => ({
+        // Return the overlapping events as they are
+        return overlappingEvents.map(event => ({
             title: event.url || event.title,
-            start: new Date(startTime.getTime() + index * blockDuration),
-            end: new Date(startTime.getTime() + (index + 1) * blockDuration),
+            start: event.start,
+            end: event.end,
             allDay: false
         }));
     }
