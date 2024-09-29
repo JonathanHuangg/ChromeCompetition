@@ -126,7 +126,7 @@ function lostFocus(domain) {
 
                     const focusStart = new Date(lastEvent.focusStart);
                     const focusEnd = new Date(lastEvent.focusEnd);
-                    const durationSeconds = (focusEnd - focusStart) / 1000;
+                    const durationSeconds = (focusEnd - focusStart) ;
                     // change this if needed
                     if (durationSeconds >= 60) {
                         chrome.storage.local.set({ tabFocusEvents: tabFocusEvents }, function () {

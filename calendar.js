@@ -208,55 +208,58 @@ var detailCalendarInstance = null;
         const timeBlocks = [];
         const startOfDay = new Date(date);  
         startOfDay.setHours(0, 0, 0, 0);
-
+    
         for (let i = 0; i < 48; i++) {
             const blockStart = new Date(startOfDay.getTime() + i * 30 * 60 * 1000);
             const blockEnd = new Date(blockStart.getTime() + 30 * 60 * 1000);
-
+    
             let overlappingEvents = events.filter(event => {
                 const eventStart = new Date(event.start);
                 const eventEnd = new Date(event.end);
                 return eventEnd > blockStart && eventStart < blockEnd;
             });
-
+    
             let blockTitle = '';
             let blockUrl = '';
-
+    
             if (overlappingEvents.length === 1) {
                 blockTitle = overlappingEvents[0].title;
                 blockUrl = overlappingEvents[0].url;
             } else if (overlappingEvents.length > 1) {
                 const titleCounts = {};
                 const urlCounts = {};
-
+    
                 overlappingEvents.forEach(event => {
                     titleCounts[event.title] = (titleCounts[event.title] || 0) + 1;
                     if (event.url) {
                         urlCounts[event.url] = (urlCounts[event.url] || 0) + 1;
                     }
                 });
-
+    
                 const mostCommonTitle = Object.keys(titleCounts).reduce((a, b) => {
                     return titleCounts[a] > titleCounts[b] ? a : b;
                 });
-
+    
                 const mostCommonUrl = Object.keys(urlCounts).reduce((a, b) => {
                     return urlCounts[a] > urlCounts[b] ? a : b;
                 }, '');
-
+    
                 blockTitle = mostCommonTitle;
                 blockUrl = mostCommonUrl;
             }
-
-            timeBlocks.push({
-                title: blockTitle, 
-                start: blockStart, 
-                end: blockEnd,
-                allDay: false,
-                url: blockUrl
-            });
+    
+            // Only add the time block if it contains a URL
+            if (blockUrl) {
+                timeBlocks.push({
+                    title: blockTitle, 
+                    start: blockStart, 
+                    end: blockEnd,
+                    allDay: false,
+                    url: blockUrl
+                });
+            }
         }
-
+    
         return timeBlocks;
     }
 
