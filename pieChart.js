@@ -1,25 +1,48 @@
+let showingCategoryChart = true;
+let piechart;
+
 document.addEventListener('DOMContentLoaded', function () {
+
+    const switchButton = document.getElementById('switchChartButton');
+    switchButton.addEventListener('click', toggleChart); 
     processStoragePie(function(domainTimeMap) {
         const categoryTimeMap = convertToCategories(domainTimeMap);
         showPieChartContainer();
-        generatePieChartByUrl(categoryTimeMap); // Pass the processed data to generatePieChart
+        generatePieChart(categoryTimeMap, 'Time Spent on Categories', 'Switch To Domains'); // Pass the processed data to generatePieChart
     });
 });
 function showPieChartContainer() {
     var extraContainer = document.getElementById('extra-container');
     extraContainer.style.display = 'block';
 }
-function generatePieChartByUrl(categoryTimeMap) {
+function toggleChart() {
+    const switchButton = document.getElementById('switchChartButton');
+
+    processStoragePie(function(domainTimeMap) {
+        if (showingCategoryChart) {
+            generatePieChart(domainTimeMap, 'Time Spent on Domains', 'Switch To Categories');
+        } else {
+            const categoryTimeMap = convertToCategories(domainTimeMap);
+            generatePieChart(categoryTimeMap, 'Time Spent on Categories', 'Switch To Domains')
+        }
+        showingCategoryChart = !showingCategoryChart;
+    })
+}
+
+function generatePieChart(dataMap, label, buttonLabel) {
     var ctx = document.getElementById('pieChart').getContext('2d');
-    const labels = Object.keys(categoryTimeMap);
-    const data = Object.values(categoryTimeMap);
+    const labels = Object.keys(dataMap);
+    const data = Object.values(dataMap);
     
-    var pieChart = new Chart(ctx, {
+    if (pieChart instanceof Chart) {
+        pieChart.destroy();
+    }
+    pieChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
             labels: labels,
             datasets: [{
-                label: 'Time Spent on Categories (seconds)',
+                label: label,
                 data: data,
                 backgroundColor: [
                     '#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40'
@@ -74,7 +97,6 @@ function convertToCategories(domainTimeMap) {
     for (const domain in domainTimeMap) {
         if (domainTimeMap.hasOwnProperty(domain)) {
             const timeSpent = domainTimeMap[domain];
-
             const category = domainCategoryMap[domain] || 'Other';
 
             if (categoryTimeMap[category]) {
