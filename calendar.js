@@ -1,3 +1,4 @@
+var detailCalendarInstance = null;
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
@@ -37,12 +38,17 @@
             droppable: false,
             eventClick: function(info) {
                 info.jsEvent.preventDefault();
+                var eventDetailsContainer = document.getElementById('event-details');
+                var wasVisible = eventDetailsContainer.classList.contains('visible');
+                var currentEventId = eventDetailsContainer.dataset.eventId;
+
                 showDetails(info.event);
+                var isVisible = eventDetailsContainer.classList.contains('visible');
                 var allEvents = document.querySelectorAll('.fc-event');
                 allEvents.forEach(function(eventEl) {
                     eventEl.classList.remove('highlighted-event');
                 });
-                if (document.getElementById('event-details').dataset.eventId === info.event.id) {
+                if (isVisible && eventDetailsContainer.dataset.eventId === info.event.id) {
                     info.el.classList.add('highlighted-event');
                 }
             },
@@ -60,28 +66,44 @@
     function showDetails(event) {
         var eventDetailsContainer = document.getElementById('event-details');
         var pieChartCanvas = document.getElementById('pieChart');
-
+    
         if (eventDetailsContainer.dataset.eventId === event.id && eventDetailsContainer.classList.contains('visible')) {
+            // Hide the event details
             eventDetailsContainer.classList.remove('visible');
             pieChartCanvas.classList.remove('shifted');
             eventDetailsContainer.dataset.eventId = '';
+            
+            // Destroy the existing detail calendar
+            if (detailCalendarInstance) {
+                detailCalendarInstance.destroy();
+                detailCalendarInstance = null;
+            }
         } else {
             // Show or update the event details
             eventDetailsContainer.classList.add('visible');
             pieChartCanvas.classList.add('shifted');
-            
+    
+            // Clear previous content
             eventDetailsContainer.innerHTML = '';
-
-
+    
+            // Destroy the existing detail calendar if any
+            if (detailCalendarInstance) {
+                detailCalendarInstance.destroy();
+                detailCalendarInstance = null;
+            }
+    
+            // Create a div for the detailed calendar
             var detailCalendarEl = document.createElement('div');
             detailCalendarEl.id = 'event-detail-calendar';
             eventDetailsContainer.appendChild(detailCalendarEl);
-            
+    
+            // Create events for the detailed calendar
             var detailedEvents = getDetailedEventsForTimeBlock(event.start, event.end);
-
-            var detailCalendar = new FullCalendar.Calendar(detailCalendarEl, {
+    
+            // Initialize a new calendar for the detailed view
+            detailCalendarInstance = new FullCalendar.Calendar(detailCalendarEl, {
                 initialView: 'timeGrid',
-                initialDate: event.start, 
+                initialDate: event.start,
                 headerToolbar: false,
                 events: detailedEvents,
                 height: 'auto',
@@ -92,57 +114,74 @@
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false
-                }, 
+                },
                 editable: false,
-                allDaySlot: false
+                allDaySlot: false,
+                eventOverlap: false,
+                slotEventOverlap: false
             });
-
-            detailCalendar.render();
+            detailCalendarInstance.render();
+    
             eventDetailsContainer.dataset.eventId = event.id;
         }
-    }
+    }    
     function getDetailedEventsForTimeBlock(startTime, endTime) {
         const detailedEvents = window.rawEvents || [];
+        console.log('startTime:', startTime, 'endTime:', endTime);
 
-        const filteredEvents = detailedEvents.filter(event => {
-            const eventStart = new Date(event.start);
-            const eventEnd = new Date(event.end);
+        const overlappingEvents = detailedEvents.filter(event => {
+            const eventStart = event.start; // Already a Date object
+            const eventEnd = event.end;     // Already a Date object
+            console.log('eventStart:', eventStart, 'eventEnd:', eventEnd);
             return eventEnd > startTime && eventStart < endTime;
         });
 
-        return filteredEvents.map(event => ({
+        console.log('overlappingEvents:', overlappingEvents);
+
+        // Calculate new durations to prevent overlap
+        const numberOfEvents = overlappingEvents.length;
+        const blockDuration = (endTime - startTime) / numberOfEvents;
+        
+        console.log('startTime:', startTime.toISOString(), 'endTime:', endTime.toISOString());
+        detailedEvents.forEach(event => {
+            console.log('Event:', event.title, 'Start:', event.start.toISOString(), 'End:', event.end.toISOString());
+        });
+
+        return overlappingEvents.map((event, index) => ({
             title: event.url || event.title,
-            start: event.start,
-            end: event.end,
+            start: new Date(startTime.getTime() + index * blockDuration),
+            end: new Date(startTime.getTime() + (index + 1) * blockDuration),
             allDay: false
         }));
     }
+    
     function processStorage(callback) {
         chrome.storage.local.get("tabFocusEvents", function(result) {
             const tabFocusEvents = result.tabFocusEvents || {};
             const events = [];
             const todaysDate = new Date();
             todaysDate.setHours(0, 0, 0, 0); // Normalize today's date
-
+    
             console.log('tabFocusEvents:', tabFocusEvents);
-
+    
             for (const domain in tabFocusEvents) {
                 if (tabFocusEvents.hasOwnProperty(domain) && Array.isArray(tabFocusEvents[domain].events)) {
                     tabFocusEvents[domain].events.forEach(event => {
                         if (event.focusStart && event.focusEnd) {
                             const eventStartDate = new Date(event.focusStart);
                             const eventEndDate = new Date(event.focusEnd);
-
+    
                             const eventDate = new Date(eventStartDate);
                             eventDate.setHours(0, 0, 0, 0);
-
-                            if (eventDate.getTime() === todaysDate.getTime()) {
+    
+                            // Only add events with a title or URL
+                            if ((event.title || event.url) && eventDate.getTime() === todaysDate.getTime()) {
                                 events.push({
-                                    title: domain,
-                                    start: event.focusStart, 
-                                    end: event.focusEnd, 
+                                    title: event.title || domain,  // Use domain if no title is present
+                                    start: eventStartDate,         // Store as Date object
+                                    end: eventEndDate,             // Store as Date object
                                     allDay: false,
-                                    url: event.url // Include URL
+                                    url: event.url || ''           // Include URL if present
                                 });
                             }
                         }
@@ -151,10 +190,10 @@
                     console.warn(`No events found or not an array for domain: ${domain}`);
                 }
             }
-            
+    
             window.rawEvents = events;
-            console.log('Raw events:', events);
-
+            console.log('Filtered events:', events);
+    
             if (Array.isArray(events) && events.length > 0) {
                 const timeBlocks = generateTimeBlocks(events, todaysDate);
                 callback(timeBlocks);
@@ -163,7 +202,7 @@
                 callback([]);
             }
         });
-    }
+    }    
 
     function generateTimeBlocks(events, date) {
         const timeBlocks = [];
@@ -211,8 +250,8 @@
 
             timeBlocks.push({
                 title: blockTitle, 
-                start: blockStart.toISOString(),
-                end: blockEnd.toISOString(),
+                start: blockStart, 
+                end: blockEnd,
                 allDay: false,
                 url: blockUrl
             });

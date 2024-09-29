@@ -45,7 +45,8 @@
             overflow: hidden;
             position: relative;
             height: 800px;
-            display: none; /* Initially hidden */
+            display: none; 
+            flex-direction: column;
         }
         .fc-toolbar.fc-header-toolbar {
             position: sticky;
@@ -93,26 +94,31 @@
             border-color: #343a40 !important;
         }
         #event-details {
-            overflow: hidden;
-            transition: max-height 0.5s ease-in-out, opacity 0.5s ease-in-out;
-            max-height: 0;
-            opacity: 0;
-            display: block;
+            flex: 3;
+            overflow-y: auto; /* Allow scrolling */
+            display: none;
         }
 
         #event-details.visible {
-            max-height: 800px; /* Adjust as needed */
-            opacity: 1;
+            display: block;
         }
 
         #pieChart {
-            transition: margin-top 0.5s ease-in-out;
+            width: 100%;
+            height: auto;
+            max-height: 100%;
         }
 
         #pieChart.shifted {
             margin-top: 20px; /* Adjust as needed */
         }
-
+        #chart-container.shifted {
+            margin-top: auto; /* Pushes the chart container to the bottom */
+        }
+        #chart-container {
+            flex: 1;
+            max-height: 25%; /* Adjust to occupy 1/4 of the container */
+        }
         .highlighted-event {
             background-color: #343a40 !important; /* Darker color */
             color: #fff !important;
@@ -125,12 +131,14 @@
             <div id="calendar-container">
                 <div id="calendar"></div>
             </div>
-        <div id="extra-container">
-            <div id="event-details"></div>
-            <h3>Time Spent on Domains</h3>
-            <canvas id="pieChart" width="200" height="200"></canvas>
-            <button id="switchChartButton">Switch To Domains</button>
-        </div>
+            <div id="extra-container">
+                <div id="event-details"></div>
+                <div id="chart-container">
+                    <h3>Time Spent on Domains</h3>
+                    <canvas id="pieChart" width="200" height="200"></canvas>
+                    <button id="switchChartButton">Switch To Domains</button>
+                </div>
+            </div>
         </div>
 
         <script src="lib/bootstrap.bundle.min.js"></script>
