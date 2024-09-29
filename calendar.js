@@ -133,6 +133,18 @@ var detailCalendarInstance = null;
             // Create events for the detailed calendar
             var detailedEvents = getDetailedEventsForTimeBlock(event.start, event.end);
 
+
+            // get the correct time for the calendar
+            function getTimeSinceMidnight(date) {
+                function pad(num) {
+                    return num.toString().padStart(2, '0');
+                }
+                return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());            
+            }
+
+            var slotMinTime = getTimeSinceMidnight(event.start);
+            var slotMaxTime = getTimeSinceMidnight(event.end);
+
             // Initialize a new calendar for the detailed view
             detailCalendarInstance = new FullCalendar.Calendar(detailCalendarEl, {
                 initialView: 'timeGrid',
@@ -151,7 +163,10 @@ var detailCalendarInstance = null;
                 editable: false,
                 allDaySlot: false,
                 eventOverlap: false,
-                slotEventOverlap: false
+                slotEventOverlap: false,
+                slotMinTime: slotMinTime,
+                slotMaxTime: slotMaxTime,
+                scrollTime: slotMinTime
             });
             detailCalendarInstance.render();
 
