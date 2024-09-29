@@ -1,12 +1,13 @@
 var detailCalendarInstance = null;
+var selectedDate = null;
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         processStorage(function(timeBlocks) {
             console.log('Time Blocks:', timeBlocks);
             generateDayCalendar(calendarEl, timeBlocks);
-        });
-    });  
+        }); 
+    });    
 
     function generateDayCalendar(calendarEl, calendarEvents) {
         if (!Array.isArray(calendarEvents)) {
@@ -51,6 +52,11 @@ var detailCalendarInstance = null;
                 if (isVisible && eventDetailsContainer.dataset.eventId === info.event.id) {
                     info.el.classList.add('highlighted-event');
                 }
+            },
+            datesSet: function(info) {
+                // Update global selected date when the calendar's view or date changes
+                selectedDate = info.start;  // This will be the start date of the current view
+                console.log('Selected Date:', selectedDate);
             },
             dayMaxEvents: true,
             views: {

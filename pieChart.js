@@ -85,6 +85,9 @@
         chrome.storage.local.get("tabFocusEvents", function (result) {
             const tabFocusEvents = result.tabFocusEvents || {};
             const domainTimeMap = {};
+            
+            const todaysDate = selectedDate;
+            todaysDate.setHours(0, 0, 0, 0);
 
             for (const domain in tabFocusEvents) {
                 if (tabFocusEvents.hasOwnProperty(domain)) {
@@ -94,12 +97,19 @@
                         if (event.focusEnd && event.focusStart) {
                             const startTime = new Date(event.focusStart);
                             const endTime = new Date(event.focusEnd);
-                            const elapsed = (endTime - startTime) / 1000;
-                            totalTime += elapsed;
+
+                            const eventDate = new Date(startTime);
+                            eventDate.setHours(0, 0, 0, 0);
+
+                            if (eventDate.getTime() === todaysDate.getTime()) {
+                                const elapsed = (endTime - startTime) / 1000;
+                                totalTime += elapsed;
+                            }
                         }
                     });
-
-                    domainTimeMap[domain] = totalTime;
+                    if (totalTime > 0) {
+                        domainTimeMap[domain] = totalTime;
+                    }
                 }
             }
             callback(domainTimeMap);
