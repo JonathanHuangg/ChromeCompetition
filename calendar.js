@@ -59,6 +59,16 @@ var detailCalendarInstance = null;
                 }
             }
         });
+        const hourBlocks = calendarEl.querySelectorAll('.hour-block');
+        hourBlocks.forEach(block => {
+            block.addEventListener('click', function() {
+                // Logic to handle the click event
+                const secondTable = document.getElementById('second-table');
+                if (secondTable) {
+                    secondTable.classList.add('scrollable');
+                }
+            });
+        });
 
         calendar.render();
     }
