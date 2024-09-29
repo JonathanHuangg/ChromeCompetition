@@ -185,7 +185,6 @@ window.selectedDate = selectedDate;
 
         console.log('overlappingEvents:', overlappingEvents);
 
-        // Calculate new durations to prevent overlap
         // Return the overlapping events as they are
         return overlappingEvents.map(event => ({
             title: event.url || event.title,
