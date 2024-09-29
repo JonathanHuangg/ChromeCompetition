@@ -1,5 +1,6 @@
 var detailCalendarInstance = null;
-var selectedDate = null;
+var selectedDate = new Date();
+window.selectedDate = selectedDate;
 (function() {
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
@@ -57,6 +58,21 @@ var selectedDate = null;
                 // Update global selected date when the calendar's view or date changes
                 selectedDate = info.start;  // This will be the start date of the current view
                 console.log('Selected Date:', selectedDate);
+                
+                // update the calendar events for this date
+                processStorage(function(timeBlocks) {
+                    console.log('Time Blocks:', timeBlocks);
+                    // Update the events in the calendar
+                    calendar.removeAllEvents();
+                    calendar.addEventSource(timeBlocks);
+                });
+                
+                if (typeof window.updatePieChart === 'function') {
+                    window.updatePieChart();
+                } else {
+                    console.warn('updatePieChart is not defined');
+                }
+
             },
             dayMaxEvents: true,
             views: {
@@ -175,7 +191,7 @@ var selectedDate = null;
         chrome.storage.local.get("tabFocusEvents", function(result) {
             const tabFocusEvents = result.tabFocusEvents || {};
             const events = [];
-            const todaysDate = new Date();
+            const todaysDate = new Date(selectedDate);
             todaysDate.setHours(0, 0, 0, 0); // Normalize today's date
     
             console.log('tabFocusEvents:', tabFocusEvents);

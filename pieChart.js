@@ -86,7 +86,7 @@
             const tabFocusEvents = result.tabFocusEvents || {};
             const domainTimeMap = {};
             
-            const todaysDate = selectedDate;
+            const todaysDate = new Date(window.selectedDate);
             todaysDate.setHours(0, 0, 0, 0);
 
             for (const domain in tabFocusEvents) {
@@ -116,6 +116,16 @@
         });
     }
 
+    function updatePieChart() {
+        processStoragePie(function(domainTimeMap) {
+            if (showingCategoryChart) {
+                const categoryTimeMap = convertToCategories(domainTimeMap);
+                generatePieChart(categoryTimeMap, 'Time Spent on Categories', 'Switch To Domains');
+            } else {
+                generatePieChart(domainTimeMap, 'Time Spent on Domains', 'Switch to Categories')
+            }
+        });
+    }
     function convertToCategories(domainTimeMap) {
         const categoryTimeMap = {};
         const domainCategoryMap = parseStringToHashmap();
@@ -1159,4 +1169,5 @@
 
         return domainCategoryMap;
     }
+    window.updatePieChart = updatePieChart;
 })();
