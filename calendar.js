@@ -1,6 +1,5 @@
 document.addEventListener('DOMContentLoaded', function() {
     var calendarEl = document.getElementById('calendar');
-
     processStorage(function(timeBlocks) {
         console.log('Time Blocks:', timeBlocks);
 
@@ -23,7 +22,6 @@ function generateDayCalendar(calendarEl, calendarEvents) {
             return; // Do not proceed with invalid data.
         }
     }
-
     // Initialize the calendar
     var calendar = new FullCalendar.Calendar(calendarEl, {
         themeSystem: 'bootstrap5',
@@ -34,8 +32,6 @@ function generateDayCalendar(calendarEl, calendarEvents) {
             center: 'title',
             right: 'dayGridMonth,timeGridWeek,timeGridDay'
         },
-        minTime: '00:00:00',
-        maxTime: '24:00:00',
         slotDuration: '00:30:00',
         slotLabelFormat: {
             hour: '2-digit',
@@ -80,17 +76,21 @@ function processStorage(callback) {
         const tabFocusEvents = result.tabFocusEvents || {};
         const events = [];
         const todaysDate = new Date();
-        const today = todaysDate.toISOString().split('T')[0];
+        todaysDate.setHours(0, 0, 0, 0); // Normalize today's date
 
         console.log('tabFocusEvents:', tabFocusEvents);
 
         for (const domain in tabFocusEvents) {
-            // Check if the domain has events and the events array is defined
             if (tabFocusEvents.hasOwnProperty(domain) && Array.isArray(tabFocusEvents[domain].events)) {
                 tabFocusEvents[domain].events.forEach(event => {
-                    console.log('Event focusStart:', event.focusStart);
                     if (event.focusStart && event.focusEnd) {
-                        if (event.focusStart.startsWith(today)) {
+                        const eventStartDate = new Date(event.focusStart);
+                        const eventEndDate = new Date(event.focusEnd);
+
+                        const eventDate = new Date(eventStartDate);
+                        eventDate.setHours(0, 0, 0, 0);
+
+                        if (eventDate.getTime() === todaysDate.getTime()) {
                             events.push({
                                 title: domain,
                                 start: event.focusStart, 
@@ -107,16 +107,16 @@ function processStorage(callback) {
 
         console.log('Raw events:', events);
 
-        // Check if events is actually an array and not empty before passing to callback
         if (Array.isArray(events) && events.length > 0) {
             const timeBlocks = generateTimeBlocks(events, todaysDate);
             callback(timeBlocks);
         } else {
             console.warn("No valid events found for today.");
-            callback([]); // Pass an empty array to callback if no events are found
+            callback([]);
         }
     });
 }
+
 
 function generateTimeBlocks(events, date) {
     const timeBlocks = [];
@@ -161,3 +161,4 @@ function generateTimeBlocks(events, date) {
 
     return timeBlocks;
 }
+

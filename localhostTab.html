@@ -1,121 +1,113 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recorded Websites - Day View</title>
-    <!-- PI CHARTS -->
-    <script src="lib/chart.umd.js"></script>
-    <!-- Bootstrap CSS -->
-    <link rel="stylesheet" href="lib/bootstrap.min.css">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Recorded Websites - Day View</title>
+      <!-- PI CHARTS -->
+      <script src="lib/chart.umd.js"></script>
+      <!-- Bootstrap CSS -->
+      <link rel="stylesheet" href="lib/bootstrap.min.css">
 
-    <!-- FullCalendar CSS (locally included) -->
-    <link rel="stylesheet" href="lib/fullcalendar.min.css">
+      <style>
+          body {
+              font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+              background-color: #f8f9fa;
+              margin: 20px;
+              padding: 0;
+          }
+          #calendar {
+              height: 100%; 
+              overflow-y: scroll; 
+          }
+          #calendar-container {
+              width: 50%;
+              float: left;
+              max-width: 1000px;
+              margin: 0 auto;
+              padding: 20px;
+              background-color: #fff;
+              box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+              border-radius: 10px;
+              overflow: hidden;
+              position: relative;
+              height: 800px;
+          }
+          #extra-container {
+              width: 50%;
+              float: right;
+              max-width: 1000px;
+              margin: 0 auto;
+              padding: 20px;
+              background-color: #fff;
+              box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+              border-radius: 10px;
+              overflow: hidden;
+              position: relative;
+              height: 800px;
+              display: none; /* Initially hidden */
+          }
+          .fc-toolbar.fc-header-toolbar {
+              position: sticky;
+              top: 0;
+              z-index: 1000;
+              background-color: #fff;
+              box-shadow: 0 2px 2px rgba(0, 0, 0, 0, 1);
+              padding: 10px 0;
+              margin-bottom: 20px;
+          }
+          .fc .fc-daygrid-event, .fc .fc-timegrid-event {
+              background-color: #198754; /* Event blocks color */
+              color: #fff;
+              border: none;
+              border-radius: 5px;
+          }
+          .fc .fc-daygrid-block-event, .fc .fc-timegrid-event {
+              padding: 5px;
+              border-radius: 6px;
+          }
+          .fc-day {
+              background-color: #ffffff; /* White background for the day cells */
+              border: 1px solid #e3e6f0;
+          }
+          .fc-timegrid-axis-cushion {
+              font-weight: bold;
+              color: #495057;
+          }
+          .fc-scrollgrid {
+              border: none;
+          }
+          .fc-day-today {
+              background-color: #f8f9fa !important;
+          }
+          .fc-timegrid-slot {
+              min-height: 80px !important;  /* Increase the minimum height for each slot */
+          }
 
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f8f9fa;
-            margin: 20px;
-            padding: 0;
-        }
-        #calendar {
-            height: 100%; 
-            overflow-y: scroll; 
-        }
-        #calendar-container {
-            width: 50%;
-            float: left;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #fff;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-            overflow: hidden;
-            position: relative;
-            height: 800px;
-        }
-        #extra-container {
-            width: 50%;
-            float: right;
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #fff;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
-            border-radius: 10px;
-            overflow: hidden;
-            position: relative;
-            height: 800px;
-            display: none;
-        }
-        .fc-toolbar.fc-header-toolbar {
-            position: sticky;
-            top: 0;
-            z-index: 1000;
-            background-color: #fff;
-            box-shadow: 0 2px 2px rgba(0, 0, 0, 0, 1);
-            padding: 10px 0;
-            margin-bottom: 20px;
-        }
-        .fc .fc-daygrid-event, .fc .fc-timegrid-event {
-            background-color: #198754; /* Event blocks color */
-            color: #fff;
-            border: none;
-            border-radius: 5px;
-        }
-        .fc .fc-daygrid-block-event, .fc .fc-timegrid-event {
-            padding: 5px;
-            border-radius: 6px;
-        }
-        .fc-day {
-            background-color: #ffffff; /* White background for the day cells */
-            border: 1px solid #e3e6f0;
-        }
-        .fc-timegrid-axis-cushion {
-            font-weight: bold;
-            color: #495057;
-        }
-        .fc-scrollgrid {
-            border: none;
-        }
-        .fc-day-today {
-            background-color: #f8f9fa !important;
-        }
-        .fc-timegrid-slot {
-            min-height: 80px !important;  /* Increase the minimum height for each slot */
-        }
-
-        .fc-timegrid-slot-lane {
-            height: 100px !important; /* Adjust the height for the slot lanes */
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div id="calendar-container">
-            <div id="calendar"></div>
+          .fc-timegrid-slot-lane {
+              height: 100px !important; /* Adjust the height for the slot lanes */
+          }
+      </style>
+  </head>
+  <body>
+      <div class="container">
+          <div id="calendar-container">
+              <div id="calendar"></div>
+          </div>
+          <div id="extra-container">
+            <h3>Time Spent on Domains</h3>
+            <canvas id="pieChart" width="200" height="200"></canvas>
         </div>
-        <div id="extra-container">
-          <h3>Event Details</h3>
-          <p id="pi-chart"></p>
+        <button> Switch To Domains </button>
       </div>
-    </div>
 
-    <!-- Bootstrap JS Bundle -->
-    <script src="lib/bootstrap.bundle.min.js"></script>
+      <!-- Bootstrap JS Bundle -->
+      <script src="lib/bootstrap.bundle.min.js"></script>
 
-    <!-- FullCalendar JS (locally included, index.global.min.js) -->
-    <script src="lib/index.global.min.js"></script>
-    <script src="calendar.js"></script>
-    <script src="offline.js"></script>
-    <!--
-  
-    <div id="storageContents"></div>
-    -->
-
-    <!-- For PI CHARTS-->
-    <script src="pieChart.js"></script>
-</body>
+      <!-- FullCalendar JS (locally included, index.global.min.js) -->
+      <script src="lib/index.global.min.js"></script>
+      <script src="calendar.js"></script>
+      <!-- For PI CHARTS-->
+      <script src="pieChart.js"></script>
+  </body>
 </html>
