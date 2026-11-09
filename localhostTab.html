@@ -123,6 +123,16 @@
             overflow-y: auto;
             max-height: 400px; /* Adjust the height as needed */
         }
+        #switchChartButton {
+            margin-top: 12px;
+            padding: 8px 12px;
+            font-size: 13px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+        }
+        #switchChartButton:hover { background: #f6f6f6; }
         .highlighted-event {
             background-color: #343a40 !important; /* Darker color */
             color: #fff !important;
@@ -138,7 +148,7 @@
             <div id="extra-container">
                 <div id="event-details"></div>
                 <div id="chart-container">
-                    <h3>Time Spent on Domains</h3>
+                    <h3 id="chart-title">Time Spent on Categories</h3>
                     <canvas id="pieChart" width="200" height="200"></canvas>
                     <button id="switchChartButton">Switch To Domains</button>
                 </div>
@@ -151,6 +161,8 @@
         <!-- Chart.js -->
         <script src="lib/chart.umd.js"></script>
         <!-- Custom Scripts -->
+        <script src="dictionary.js"></script>
+        <script src="categories.js"></script>
         <script src="calendar.js"></script>
         <script src="pieChart.js"></script>
   </body>

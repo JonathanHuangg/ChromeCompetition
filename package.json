@@ -1,0 +1,1 @@
+{"description":"Chrome extension that tracks time spent on sites, by category and by day, entirely on-device.","name":"chrome-screentime","private":true,"scripts":{"generate:categories":"node scripts/generate-categories.js","test":"node --test tests/*.test.js"},"version":"1.0"}

@@ -4,8 +4,11 @@
 
 /*
 
-Note: Instead of every call, use debouncing for performance improvements
-Introduce a lock like isUpdating for all of the listeners
+Note: bursts of the same event are coalesced with a leading-edge throttle
+(no timers: a service worker can be terminated before a setTimeout fires).
+Storage read-modify-writes are serialized with a promise-chain lock so two
+concurrent listeners cannot read the same dictionary and drop each other's
+session.
 1) Use listeners 
     a) chrome.tabs.onActivated - track changes in active tabs
     b) chrome.tabs.onUpdated - track changes in url per tab
@@ -79,112 +82,249 @@ class TimeObject {
     }
 }
 
-// Introduce locking
-let dictionarylockInUse = false
-
-async function dictionaryAcquireLock() {
-    while (dictionarylockInUse) {
-        await new Promise(resolve => setTimeout(resolve, 10)); // add 10 ms just for safety
+// Only real web pages are tracked. Browser pages (chrome://, about:), the
+// extension's own pages and blank tabs have no meaningful domain and would
+// pollute every chart. Keep in sync with isTrackableUrl in dictionary.js,
+// which the dashboard and popup use for the same check.
+function isTrackableUrl(url) {
+    if (typeof url !== "string") return false;
+    try {
+        const protocol = new URL(url).protocol;
+        return protocol === "http:" || protocol === "https:";
+    } catch {
+        return false;
     }
-    dictionarylockInUse = true;
 }
 
-function dictionaryReleaseLock() {
-    dictionarylockInUse = false;
+// Serialize storage read-modify-writes. The listeners fire concurrently,
+// and without this two handlers could read the same dictionary and the
+// second one's write would silently drop the first one's session. This is
+// a promise chain, not a flag plus setTimeout: a timer-based lock can be
+// lost if the service worker is terminated while waiting.
+let dictionaryQueue = Promise.resolve();
+
+function withDictionaryLock(task) {
+    const run = dictionaryQueue.then(async () => {
+        // Every write waits for the startup restore, so no handler can run
+        // against an empty `windows` map while the real open sessions are
+        // still being loaded back from storage.
+        await windowsReady;
+        return task();
+    });
+    // Keep the chain alive past a failure so one bad event cannot wedge
+    // every later write.
+    dictionaryQueue = run.catch(() => {});
+    return run;
 }
 
 // dictionary for windowID
 let windows = {}; // key = windowID, val = timestamp object
 let previousFocusedWindowId = chrome.windows.WINDOW_ID_NONE;
+
+// The service worker is stopped when idle and restarted on the next event,
+// which wipes the in-memory `windows` map. Open sessions are therefore
+// persisted in storage alongside the dictionary and restored on startup,
+// so a restart mid-session does not lose the open session (before this,
+// the session dangled and the dashboard counted it as open forever).
+let windowsReady = restoreOpenSessions();
+
+async function restoreOpenSessions() {
+    try {
+        const { openSessions, dictionary = {} } = await chrome.storage.local.get([
+            "openSessions",
+            "dictionary",
+        ]);
+        if (!openSessions || typeof openSessions !== "object") return;
+        const liveWindows = await chrome.windows.getAll();
+        const liveIds = new Set(liveWindows.map((window) => String(window.id)));
+        const focusedWindow = liveWindows.find((window) => window.focused);
+        if (focusedWindow) {
+            previousFocusedWindowId = focusedWindow.id;
+        }
+        windows = {};
+        let staleClosed = false;
+        for (const [windowId, openSession] of Object.entries(openSessions)) {
+            if (liveIds.has(windowId)) {
+                windows[windowId] = openSession;
+            } else {
+                staleClosed = closeStaleSession(dictionary, openSession) || staleClosed;
+            }
+        }
+        if (staleClosed) {
+            await persistState(dictionary);
+        }
+    } catch (error) {
+        console.error("Error restoring open sessions: ", error);
+    }
+}
+
+// A session whose window is gone (browser restarted, or the window closed
+// while the worker was down) can never be closed by an event. End it where
+// it started: the page opening was observed, but how long it stayed open
+// was not, so no elapsed time is recorded for it rather than inventing
+// any. Returns true when it closed a session.
+function closeStaleSession(dictionary, openSession) {
+    if (!openSession || !openSession.url) return false;
+    const entry = dictionary[openSession.url];
+    if (!entry || !Array.isArray(entry[1])) return false;
+    const lastEvent = entry[1][entry[1].length - 1];
+    if (!lastEvent || lastEvent.event !== "OPEN") return false;
+    entry[1].push(
+        new TimeObject(openSession.url, openSession.timestamp, "CLOSE", openSession.windowID),
+    );
+    return true;
+}
+
+// Persist the recorded history and the sessions still open in one write,
+// so a worker restart can never observe one without the other.
+function persistState(dictionary) {
+    return chrome.storage.local.set({ dictionary, openSessions: windows });
+}
+
 // introduce the listeners
 
-function debounce(func, delay) {
-    let timer;
+// Coalesce bursts of the same event (one navigation fires several updates)
+// by running the first call immediately and ignoring repeats for `delay`
+// ms. The old debounce deferred the work behind setTimeout, which a
+// service worker can be terminated before firing, silently dropping the
+// event. This version uses only the clock, so no work is ever deferred.
+function throttleLeading(func, delay) {
+    let lastRun = 0;
     return function (...args) {
-        const context = this;
-        clearTimeout(timer);
-        timer = setTimeout(() => func.apply(context, args), delay);
+        const now = Date.now();
+        if (now - lastRun >= delay) {
+            lastRun = now;
+            func.apply(this, args);
+        }
     };
 }
-chrome.tabs.onActivated.addListener(debounce (async (activeInfo) => {
+chrome.tabs.onActivated.addListener(throttleLeading(async (activeInfo) => {
     try {
         const tab = await chrome.tabs.get(activeInfo.tabId);
-        if (!tab.url) {
-            console.warn("There is no tab url");
+        // A blank tab has not gone anywhere yet: the navigation that follows
+        // will report the real URL. Closing the previous session here would
+        // race that navigation, so a blank tab is a no-op.
+        if (!tab.url || tab.url === "about:blank") {
             return;
         }
         const now = Date.now();
-        await addStartEndToDictionary(activeInfo.tabId, now, tab.windowId, tab.url);
+        // Switching to a page we don't track (e.g. chrome://) still ends
+        // the previous tab's session, so its time stops accruing instead
+        // of running until the next tracked tab.
+        if (!isTrackableUrl(tab.url)) {
+            await closeAllOpenSessions(now);
+            return;
+        }
+        await addStartEndToDictionary(now, tab.windowId, tab.url);
     } catch (error) {
         console.log("OnActivated listener failed: ", error.message);
     }
 }, 100))
 /*
-Need to update the current URL with an end, create a new timeObj for the new url
+Need to update the current URL with an end, create a new timeObj for the new url.
+Fires on newInfo.url, not on status "complete": Chrome reports the URL
+change and the load completing in separate onUpdated events, so requiring
+both in the same event meant same-tab navigation was never recorded.
+Deliberately not throttled: a new tab reports about:blank and then the real
+URL within milliseconds, and a leading-edge throttle would keep the first
+and drop the second, losing the navigation entirely. URL changes are
+already rare (one per navigation), so there is nothing to coalesce.
 */
-chrome.tabs.onUpdated.addListener(debounce (async (tabId, newInfo, tab) => {
-    if (newInfo.url && tab.status == "complete") {
-        try {
-            if (!tab.url) {
-                console.warn("There is no tab url");
-                return;
-            }
-            const now = Date.now()
-            await addStartEndToDictionary(tabId, now, tab.windowId, tab.url);
-            
-        } catch (error) {
-            console.log("On update listener failed: ", error)
+chrome.tabs.onUpdated.addListener(async (tabId, newInfo, tab) => {
+    // See onActivated: a blank tab has not gone anywhere yet.
+    if (!newInfo.url || newInfo.url === "about:blank") {
+        return;
+    }
+    try {
+        const now = Date.now()
+        if (!isTrackableUrl(newInfo.url)) {
+            await closeAllOpenSessions(now);
+            return;
         }
-    } 
-}, 100));
+        await addStartEndToDictionary(now, tab.windowId, newInfo.url);
+    } catch (error) {
+        console.log("On update listener failed: ", error)
+    }
+});
 
 
 /*
 1) get the dictionary
 2) Add new timeObj to the dictionary[url]
-3) clean out windows by adding it to the dictionary
+3) Close every session that was open, including the previous tab in this
+   same window, recording the elapsed time for each
 4) reset windows
 */
-async function addStartEndToDictionary(tabId, timeStamp, windowId, url) {
-    try {
-        await dictionaryAcquireLock();
-        const tab = await chrome.tabs.get(tabId);
-        const newOpenTab = new TimeObject(url, timeStamp, "OPEN", windowId);
+function addStartEndToDictionary(timeStamp, windowId, url) {
+    return withDictionaryLock(async () => {
+        try {
+            const newOpenTab = new TimeObject(url, timeStamp, "OPEN", windowId);
 
-        const res = await chrome.storage.local.get("dictionary");
-        const dictionary = res.dictionary || {};
-        if (!dictionary[url]) {
-            dictionary[url] = [0, [newOpenTab]];
-        } else {
-            dictionary[url][1].push(newOpenTab);
-        }
-
-        for (const [windowID, value] of Object.entries(windows)) {
-            if (windowID == String(windowId)) {
-                continue;
+            const res = await chrome.storage.local.get("dictionary");
+            const dictionary = res.dictionary || {};
+            if (!dictionary[url]) {
+                dictionary[url] = [0, [newOpenTab]];
+            } else {
+                dictionary[url][1].push(newOpenTab);
             }
-            try { 
-                const elapsedTime = TimeObject.computeDifference(value, newOpenTab);
-                const endTab = new TimeObject(value.url, newOpenTab.timestamp, "CLOSE", windowID);
 
-                if (dictionary[value.url]) {
-                    dictionary[value.url][0] += elapsedTime;
-                    dictionary[value.url][1].push(endTab);
-                } else {
-                    console.error(`There is no value in dictionary where key is ${value.url}`);
-                }
-            } catch(error) {
-                console.error("Close objects are being added when the dictionary doesn't exist. Error: ", error);
-            }
+            closeOpenSessions(dictionary, timeStamp, windowId);
+            windows[windowId] = newOpenTab;
+            await persistState(dictionary);
+        } catch (error) {
+            console.error("Error in addStartEndToDictionary: ", error);
         }
-        windows[windowId] = newOpenTab;
-        await chrome.storage.local.set({ dictionary });
+    });
+}
 
-    } catch (error) {
-        console.error("Error in addStartEndToDictionary: ", error);
-    } finally {
-        dictionaryReleaseLock();
+/*
+Close every session currently open in `windows` at `timeStamp`, adding a
+CLOSE event and the elapsed time to the dictionary for each. Entries for
+other windows are removed once closed, so a session can never be closed
+twice; the current window's entry is left for the caller to overwrite with
+the new session. A missing dictionary entry for a closing session is logged
+instead of crashing the whole update.
+*/
+function closeOpenSessions(dictionary, timeStamp, currentWindowId) {
+    for (const [windowID, value] of Object.entries(windows)) {
+        if (!value) {
+            continue;
+        }
+        try {
+            const endTab = new TimeObject(value.url, timeStamp, "CLOSE", windowID);
+            const elapsedTime = TimeObject.computeDifference(value, endTab);
+
+            if (dictionary[value.url]) {
+                dictionary[value.url][0] += elapsedTime;
+                dictionary[value.url][1].push(endTab);
+            } else {
+                console.error(`There is no value in dictionary where key is ${value.url}`);
+            }
+        } catch (error) {
+            console.error("Close objects are being added when the dictionary doesn't exist. Error: ", error);
+        }
+        if (windowID !== String(currentWindowId)) {
+            delete windows[windowID];
+        }
     }
+}
+
+/*
+Close every open session without opening a new one. Used when the user
+switches to a page we don't track: the previous tab's time stops accruing
+instead of running until the next tracked tab.
+*/
+function closeAllOpenSessions(timeStamp) {
+    return withDictionaryLock(async () => {
+        try {
+            const res = await chrome.storage.local.get("dictionary");
+            const dictionary = res.dictionary || {};
+            closeOpenSessions(dictionary, timeStamp);
+            await persistState(dictionary);
+        } catch (error) {
+            console.error("Error in closeAllOpenSessions: ", error);
+        }
+    });
 }
 
 /*
@@ -193,103 +333,106 @@ find where the window you left from. The last item should be an "OPEN" timeObj.
 Add a "CLOSE" timeObj to it.
 Add an "OPEN" for the new Window
 */
-chrome.windows.onFocusChanged.addListener(debounce(async (windowId) => {
+chrome.windows.onFocusChanged.addListener(throttleLeading(async (windowId) => {
     const now = Date.now();
 
-    try {
-        await dictionaryAcquireLock();
+    await withDictionaryLock(async () => {
+        try {
 
-        const res = await chrome.storage.local.get("dictionary");
-        const dictionary = res.dictionary || {};
+            const res = await chrome.storage.local.get("dictionary");
+            const dictionary = res.dictionary || {};
         
-        // window that you leave from
-        if (previousFocusedWindowId !== chrome.windows.WINDOW_ID_NONE) {
-            const openTimeObj = windows[previousFocusedWindowId];
+            // window that you leave from
+            if (previousFocusedWindowId !== chrome.windows.WINDOW_ID_NONE) {
+                const openTimeObj = windows[previousFocusedWindowId];
 
-            if (openTimeObj && openTimeObj.url) {
-                const prevWindowEntry = dictionary[openTimeObj.url];
+                // A missing entry is normal, not an error: a tab switch in the
+                // meantime already closed this window's session.
+                if (openTimeObj && openTimeObj.url) {
+                    const prevWindowEntry = dictionary[openTimeObj.url];
 
-                if (prevWindowEntry && prevWindowEntry[1].length > 0) {
-                    const lastTimeObj = prevWindowEntry[1][prevWindowEntry[1].length - 1];
-                    if (lastTimeObj.event == "OPEN") {
-                        const closeTimeObj = new TimeObject(openTimeObj.url, now, "CLOSE", previousFocusedWindowId);
+                    if (prevWindowEntry && prevWindowEntry[1].length > 0) {
+                        const lastTimeObj = prevWindowEntry[1][prevWindowEntry[1].length - 1];
+                        if (lastTimeObj.event == "OPEN") {
+                            const closeTimeObj = new TimeObject(openTimeObj.url, now, "CLOSE", previousFocusedWindowId);
 
-                        const elapsedTime = TimeObject.computeDifference(lastTimeObj, closeTimeObj);
-                        dictionary[openTimeObj.url][0] += elapsedTime;
+                            const elapsedTime = TimeObject.computeDifference(lastTimeObj, closeTimeObj);
+                            dictionary[openTimeObj.url][0] += elapsedTime;
 
-                        dictionary[openTimeObj.url][1].push(closeTimeObj);
+                            dictionary[openTimeObj.url][1].push(closeTimeObj);
+                        }
                     }
+                    delete windows[previousFocusedWindowId];
                 }
-                windows[previousFocusedWindowId] = null;
-            } else {
-                console.error("OnFocusChanged failed. The openTimeObject was not saved in the window hashmap");
             }
-        }
         
-        // new window that gained focus
-        if (windowId !== chrome.windows.WINDOW_ID_NONE) {
+            // new window that gained focus
+            if (windowId !== chrome.windows.WINDOW_ID_NONE) {
 
-            const[activeTab] = await chrome.tabs.query({ active: true, windowId: windowId});
+                const[activeTab] = await chrome.tabs.query({ active: true, windowId: windowId});
 
-            if (activeTab && activeTab.url) {
-                const activeURL = activeTab.url;
-                const openTimeObj = new TimeObject(activeURL, now, "OPEN", windowId);
-                windows[windowId] = openTimeObj;
+                if (activeTab && activeTab.url && isTrackableUrl(activeTab.url)) {
+                    const activeURL = activeTab.url;
+                    const openTimeObj = new TimeObject(activeURL, now, "OPEN", windowId);
+                    windows[windowId] = openTimeObj;
 
-                if (!dictionary[activeURL]) {
-                    dictionary[activeURL] = [0, [openTimeObj]];
+                    if (!dictionary[activeURL]) {
+                        dictionary[activeURL] = [0, [openTimeObj]];
+                    } else {
+                        dictionary[activeURL][1].push(openTimeObj);
+                    }
+                } else if (activeTab && activeTab.url) {
+                    // Focused window is on a page we don't track: no new session.
+                    delete windows[windowId];
                 } else {
-                    dictionary[activeURL][1].push(openTimeObj);
+                    console.warn(`No active tab found for window ID: ${windowId}`);
+                    delete windows[windowId];
                 }
-            } else {
-                console.warn(`No active tab found for window ID: ${windowId}`);
-                windows[windowId] = null;
             }
+
+            await persistState(dictionary);
+
+            previousFocusedWindowId = windowId;
+        } catch (error) {
+            console.error("Error in OnFocusChanged listener: ", error.message);
         }
-
-        await chrome.storage.local.set({ dictionary });
-
-        previousFocusedWindowId = windowId;
-    } catch (error) {
-        console.error("Error in OnFocusChanged listener: ", error.message);
-    } finally {
-        dictionaryReleaseLock();
-    }
+    });
 
 }, 100));
 
 /*
 Add a closeTimeObj and add the elapsed time for the window that you just deleted
 */
-chrome.windows.onRemoved.addListener(debounce(async (windowId) => {
-    if (windows[windowId] == null) {
-        console.error("Something is wrong. A window was deleted but it was never originally recorded");
+chrome.windows.onRemoved.addListener(throttleLeading(async (windowId) => {
+    const openObj = windows[windowId];
+    // A missing entry is normal: focus leaving the window, or a tab switch,
+    // already closed this window's session and recorded its time.
+    if (!openObj) {
+        return;
     }
     const now = Date.now();
-    const openObj = windows[windowId];
-    try {
-        await dictionaryAcquireLock();
-        const closeTimeObj = new TimeObject(openObj.url, now, "CLOSE", windowId);
+    await withDictionaryLock(async () => {
+        try {
+            const closeTimeObj = new TimeObject(openObj.url, now, "CLOSE", windowId);
 
-        const res = await chrome.storage.local.get("dictionary");
-        const dictionary = res.dictionary || {};
-        if (dictionary == null) {
-            console.error("Something is wrong. There is no dictionary in storage");
-            return;
-        }
+            const res = await chrome.storage.local.get("dictionary");
+            const dictionary = res.dictionary || {};
+            if (dictionary == null) {
+                console.error("Something is wrong. There is no dictionary in storage");
+                return;
+            }
 
-        if (!dictionary[closeTimeObj.url]) {
-            console.error("Something is wrong. The dictionary entry for deleted window does not exist");
-            return;
+            if (!dictionary[closeTimeObj.url]) {
+                console.error("Something is wrong. The dictionary entry for deleted window does not exist");
+                return;
+            }
+            const elapsedTime = TimeObject.computeDifference(openObj, closeTimeObj);
+            dictionary[closeTimeObj.url][0] += elapsedTime;
+            dictionary[closeTimeObj.url][1].push(closeTimeObj);
+            await persistState(dictionary);
+            delete windows[windowId];
+        } catch (error) {
+            console.error("OnRemoved failed with error ", error);
         }
-        const elapsedTime = TimeObject.computeDifference(openObj, closeTimeObj);
-        dictionary[closeTimeObj.url][0] += elapsedTime;
-        dictionary[closeTimeObj.url][1].push(closeTimeObj);
-        await chrome.storage.local.set({ dictionary });
-        delete windows[windowId];
-    } catch (error) {
-        console.error("OnRemoved failed with error ", error);
-    } finally {
-        dictionaryReleaseLock();
-    }
+    });
 }, 100));
