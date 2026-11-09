@@ -3,7 +3,6 @@ var detailCalendarInstance = null;
     document.addEventListener('DOMContentLoaded', function() {
         var calendarEl = document.getElementById('calendar');
         processStorage(function(timeBlocks) {
-            console.log('Time Blocks:', timeBlocks);
             generateDayCalendar(calendarEl, timeBlocks);
         });
     });  
@@ -137,25 +136,18 @@ var detailCalendarInstance = null;
     }    
     function getDetailedEventsForTimeBlock(startTime, endTime) {
         const detailedEvents = window.rawEvents || [];
-        console.log('startTime:', startTime, 'endTime:', endTime);
 
         const overlappingEvents = detailedEvents.filter(event => {
             const eventStart = event.start; // Already a Date object
             const eventEnd = event.end;     // Already a Date object
-            console.log('eventStart:', eventStart, 'eventEnd:', eventEnd);
             return eventEnd > startTime && eventStart < endTime;
         });
 
-        console.log('overlappingEvents:', overlappingEvents);
 
         // Calculate new durations to prevent overlap
         const numberOfEvents = overlappingEvents.length;
         const blockDuration = (endTime - startTime) / numberOfEvents;
         
-        console.log('startTime:', startTime.toISOString(), 'endTime:', endTime.toISOString());
-        detailedEvents.forEach(event => {
-            console.log('Event:', event.title, 'Start:', event.start.toISOString(), 'End:', event.end.toISOString());
-        });
 
         return overlappingEvents.map((event, index) => ({
             title: event.url || event.title,
@@ -165,54 +157,34 @@ var detailCalendarInstance = null;
         }));
     }
     
+    // Read the same `dictionary` background.js writes. The old version read
+    // a `tabFocusEvents` key nothing ever wrote, so the calendar could only
+    // ever render empty. A session still open ends at now, so a tab left
+    // open renders up to the current time instead of vanishing.
     function processStorage(callback) {
-        chrome.storage.local.get("tabFocusEvents", function(result) {
-            const tabFocusEvents = result.tabFocusEvents || {};
-            const events = [];
-            const todaysDate = new Date();
-            todaysDate.setHours(0, 0, 0, 0); // Normalize today's date
-    
-            console.log('tabFocusEvents:', tabFocusEvents);
-    
-            for (const domain in tabFocusEvents) {
-                if (tabFocusEvents.hasOwnProperty(domain) && Array.isArray(tabFocusEvents[domain].events)) {
-                    tabFocusEvents[domain].events.forEach(event => {
-                        if (event.focusStart && event.focusEnd) {
-                            const eventStartDate = new Date(event.focusStart);
-                            const eventEndDate = new Date(event.focusEnd);
-    
-                            const eventDate = new Date(eventStartDate);
-                            eventDate.setHours(0, 0, 0, 0);
-    
-                            // Only add events with a title or URL
-                            if ((event.title || event.url) && eventDate.getTime() === todaysDate.getTime()) {
-                                events.push({
-                                    title: event.title || domain,  // Use domain if no title is present
-                                    start: eventStartDate,         // Store as Date object
-                                    end: eventEndDate,             // Store as Date object
-                                    allDay: false,
-                                    url: event.url || ''           // Include URL if present
-                                });
-                            }
-                        }
-                    });
-                } else {
-                    console.warn(`No events found or not an array for domain: ${domain}`);
-                }
-            }
-    
+        chrome.storage.local.get("dictionary", function (result) {
+            const now = Date.now();
+            const sessions = Screentime.sessionsFromDictionary(
+                result.dictionary || {}, Screentime.todayStartMs(now), now);
+            const events = sessions.map((session) => ({
+                title: session.domain,
+                start: new Date(session.start),
+                end: new Date(session.end === null ? now : session.end),
+                allDay: false,
+                url: session.url,
+            }));
+
             window.rawEvents = events;
-            console.log('Filtered events:', events);
-    
-            if (Array.isArray(events) && events.length > 0) {
-                const timeBlocks = generateTimeBlocks(events, todaysDate);
+
+            if (events.length > 0) {
+                const timeBlocks = generateTimeBlocks(events, new Date(Screentime.todayStartMs(now)));
                 callback(timeBlocks);
             } else {
                 console.warn("No valid events found for today.");
                 callback([]);
             }
         });
-    }    
+    }
 
     function generateTimeBlocks(events, date) {
         const timeBlocks = [];
